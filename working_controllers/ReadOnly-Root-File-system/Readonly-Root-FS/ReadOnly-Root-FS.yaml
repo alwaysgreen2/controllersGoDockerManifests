@@ -1,0 +1,95 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: readonly-rootfs-enforcer
+  namespace: webhook-demo
+spec:
+  selector:
+    app: readonly-rootfs-enforcer
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: readonly-rootfs-enforcer
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: readonly-rootfs-enforcer
+  template:
+    metadata:
+      labels:
+        app: readonly-rootfs-enforcer
+    spec:
+      containers:
+        - name: webhook
+          image: creativsrwr/readonly-rootfs-enforcer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: readonly-rootfs-enforcer-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: readonly-rootfs-enforcer-selfsigned
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: readonly-rootfs-enforcer-tls
+  namespace: webhook-demo
+spec:
+  secretName: readonly-rootfs-enforcer-tls
+  issuerRef:
+    name: readonly-rootfs-enforcer-selfsigned
+    kind: Issuer
+  commonName: readonly-rootfs-enforcer.webhook-demo.svc
+  dnsNames:
+    - readonly-rootfs-enforcer.webhook-demo.svc
+    - readonly-rootfs-enforcer.webhook-demo.svc.cluster.local
+  usages:
+    - digital signature
+    - key encipherment
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: readonly-rootfs-enforcer
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-demo/readonly-rootfs-enforcer-tls
+webhooks:
+  - name: readonly-rootfs-enforcer.webhook-demo.svc
+    clientConfig:
+      service:
+        name: readonly-rootfs-enforcer
+        namespace: webhook-demo
+        path: /validate
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: "Namespaced"
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 2

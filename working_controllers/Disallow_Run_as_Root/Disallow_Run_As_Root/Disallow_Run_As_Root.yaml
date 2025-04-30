@@ -1,0 +1,97 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: no-root-user-enforcer
+  namespace: webhook-demo
+spec:
+  selector:
+    app: no-root-user-enforcer
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-root-user-enforcer
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: no-root-user-enforcer
+  template:
+    metadata:
+      labels:
+        app: no-root-user-enforcer
+    spec:
+      containers:
+        - name: webhook
+          image: docker.io/creativsrwr/no-root-user-enforcer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: no-root-user-enforcer-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: no-root-user-enforcer-selfsigned
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: no-root-user-enforcer-tls
+  namespace: webhook-demo
+spec:
+  secretName: no-root-user-enforcer-tls
+  issuerRef:
+    name: no-root-user-enforcer-selfsigned
+    kind: Issuer
+  commonName: no-root-user-enforcer.webhook-demo.svc
+  dnsNames:
+    - no-root-user-enforcer.webhook-demo.svc
+    - no-root-user-enforcer.webhook-demo.svc.cluster.local
+  usages:
+    - digital signature
+    - key encipherment
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: no-root-user-enforcer
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-demo/no-root-user-enforcer-tls
+webhooks:
+  - name: no-root-user-enforcer.webhook-demo.svc
+    clientConfig:
+      service:
+        name: no-root-user-enforcer
+        namespace: webhook-demo
+        path: /validate
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: "Namespaced"
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 2
+

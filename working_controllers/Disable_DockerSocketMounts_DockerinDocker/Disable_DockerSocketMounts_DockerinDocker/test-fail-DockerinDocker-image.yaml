@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dind-deployment
+  namespace: default  # Not webhook-demo (enforcement applies)
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dind-deployment
+  template:
+    metadata:
+      labels:
+        app: dind-deployment
+    spec:
+      containers:
+      - name: dind
+        image: docker:dind  # Violation

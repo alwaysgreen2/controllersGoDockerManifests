@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: singleton-pod-blocker
+  namespace: webhook-demo
+spec:
+  selector:
+    app: singleton-pod-blocker
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: singleton-pod-blocker
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: singleton-pod-blocker
+  template:
+    metadata:
+      labels:
+        app: singleton-pod-blocker
+    spec:
+      containers:
+        - name: webhook
+          image: creativsrwr/singleton-pod-blocker:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+         readinessProbe:  
+            httpGet:
+              path: /healthz
+              port: 8443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+      volumes:
+        - name: certs
+          secret:
+            secretName: webhook-certs
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: singleton-pod-blocker
+webhooks:
+  - name: singleton-pod-blocker.webhook-demo.svc
+    clientConfig:
+      service:
+        name: singleton-pod-blocker
+        namespace: webhook-demo
+        path: "/validate"
+        port: 443
+      caBundle: ""
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: "Namespaced"
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values: [webhook-demo]
+    admissionReviewVersions: ["v1"]
+    sideEffects: None

@@ -1,0 +1,14 @@
+## Singleton Pod Blocker Admission Webhook
+
+This webhook **blocks direct Pod creation**. Use Deployments, not bare Pods!
+
+### Prerequisites
+
+- cert-manager must be installed in your cluster.
+  - [cert-manager install guide](https://cert-manager.io/docs/installation/)
+
+### Installation
+
+```sh
+kubectl apply -f singleton-pod-blocker.yaml
+kubectl -n webhook-demo wait --for=condition=complete job/webhook-certgen --timeout=60s

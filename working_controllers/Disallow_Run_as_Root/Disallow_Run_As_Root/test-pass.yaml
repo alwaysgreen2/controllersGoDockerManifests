@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+  containers:
+  - name: http-echo
+    image: hashicorp/http-echo:latest
+    args: ["-text=hello from UID 1000", "-listen=:5678"]
+    ports:
+    - containerPort: 5678
+

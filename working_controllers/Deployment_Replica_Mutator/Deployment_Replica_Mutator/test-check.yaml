@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-passing
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-passing
+  template:
+    metadata:
+      labels:
+        app: test-passing
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.25
+

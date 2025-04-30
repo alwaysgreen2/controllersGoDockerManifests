@@ -1,0 +1,23 @@
+#this should be mutated and a new field should be added
+#important point: this webhook will not work on webhook-demo namespace
+#so make sure resources are in other namespaces
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-no-svclinks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-no-svclinks
+  template:
+    metadata:
+      labels:
+        app: test-no-svclinks
+    spec:
+      containers:
+        - name: alpine
+          image: alpine
+          command: ["sleep", "600"]
+

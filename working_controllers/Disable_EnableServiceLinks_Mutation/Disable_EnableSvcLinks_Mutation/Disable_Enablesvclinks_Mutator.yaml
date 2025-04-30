@@ -1,0 +1,120 @@
+# -------------------------------------------------------------------
+# Namespace
+# -------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+# -------------------------------------------------------------------
+# Self-signed Issuer for our webhook TLS
+# -------------------------------------------------------------------
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: disable-enablesvclinks-mutator-issuer
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+---
+# -------------------------------------------------------------------
+# Certificate for our webhook server TLS
+# -------------------------------------------------------------------
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: disable-enablesvclinks-mutator-tls
+  namespace: webhook-demo
+spec:
+  secretName: disable-enablesvclinks-mutator-tls
+  commonName: disable-enablesvclinks-mutator.webhook-demo.svc
+  dnsNames:
+    - disable-enablesvclinks-mutator.webhook-demo.svc
+  issuerRef:
+    name: disable-enablesvclinks-mutator-issuer
+    kind: Issuer
+  usages:
+    - digital signature
+    - key encipherment
+---
+# -------------------------------------------------------------------
+# Service exposing the webhook pod
+# -------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: disable-enablesvclinks-mutator
+  namespace: webhook-demo
+spec:
+  selector:
+    app: disable-enablesvclinks-mutator
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+# -------------------------------------------------------------------
+# Deployment running the mutating webhook server
+# -------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disable-enablesvclinks-mutator
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: disable-enablesvclinks-mutator
+  template:
+    metadata:
+      labels:
+        app: disable-enablesvclinks-mutator
+    spec:
+      containers:
+        - name: mutator
+          image: creativsrwr/disable-enablesvclinks-mutator:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: disable-enablesvclinks-mutator-tls
+---
+# -------------------------------------------------------------------
+# MutatingWebhookConfiguration (excludes webhook-demo namespace)
+# -------------------------------------------------------------------
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: disable-enablesvclinks-mutator
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-demo/disable-enablesvclinks-mutator-tls
+webhooks:
+  - name: disable-enablesvclinks-mutator.webhook-demo.svc
+    clientConfig:
+      service:
+        name: disable-enablesvclinks-mutator
+        namespace: webhook-demo
+        path: "/mutate"
+      # caBundle auto-injected by cert-manager
+    rules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        resources: ["deployments"]
+        operations: ["CREATE","UPDATE"]
+        scope: "Namespaced"
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - webhook-demo
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 5
+

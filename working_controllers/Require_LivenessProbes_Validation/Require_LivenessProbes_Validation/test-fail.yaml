@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-liveness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: no-liveness
+  template:
+    metadata:
+      labels:
+        app: no-liveness
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:stable
+        
+

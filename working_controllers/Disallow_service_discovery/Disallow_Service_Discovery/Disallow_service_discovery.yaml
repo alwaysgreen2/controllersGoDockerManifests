@@ -1,0 +1,111 @@
+# ------------------------
+#  Namespace
+# ------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+# ------------------------
+#  Service for the webhook
+# ------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: disable-service-discovery-enforcer
+  namespace: webhook-demo
+spec:
+  selector:
+    app: disable-service-discovery-enforcer
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+# ------------------------
+#  Webhook Deployment
+# ------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: disable-service-discovery-enforcer
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: disable-service-discovery-enforcer
+  template:
+    metadata:
+      labels:
+        app: disable-service-discovery-enforcer
+    spec:
+      containers:
+        - name: webhook
+          image: creativsrwr/disable-service-discovery-enforcer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: disable-service-discovery-enforcer-tls
+---
+# ------------------------
+#  cert-manager Issuer and Certificate
+# ------------------------
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: disable-service-discovery-enforcer-selfsigned
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: disable-service-discovery-enforcer-tls
+  namespace: webhook-demo
+spec:
+  secretName: disable-service-discovery-enforcer-tls
+  issuerRef:
+    name: disable-service-discovery-enforcer-selfsigned
+    kind: Issuer
+  commonName: disable-service-discovery-enforcer.webhook-demo.svc
+  dnsNames:
+    - disable-service-discovery-enforcer.webhook-demo.svc
+    - disable-service-discovery-enforcer.webhook-demo.svc.cluster.local
+  usages:
+    - digital signature
+    - key encipherment
+---
+# -------------------------------------------------
+#  ValidatingWebhookConfiguration (CA auto‑injected)
+# -------------------------------------------------
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: disable-service-discovery-enforcer
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-demo/disable-service-discovery-enforcer-tls
+webhooks:
+  - name: disable-service-discovery-enforcer.webhook-demo.svc
+    clientConfig:
+      service:
+        name: disable-service-discovery-enforcer
+        namespace: webhook-demo
+        path: /validate
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: "Namespaced"
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 2
+

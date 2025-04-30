@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-deployment-env
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bad-deployment-env
+  template:
+    metadata:
+      labels:
+        app: bad-deployment-env
+    spec:
+      containers:
+      - name: app
+        image: nginx
+        env:
+        - name: API_KEY
+          value: "dummyapikey"
+

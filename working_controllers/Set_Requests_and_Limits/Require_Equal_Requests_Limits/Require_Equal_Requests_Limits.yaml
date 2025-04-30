@@ -1,0 +1,110 @@
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: req-limits-validator-issuer
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+
+---
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: req-limits-validator-tls
+  namespace: webhook-demo
+spec:
+  secretName: req-limits-validator-tls
+  commonName: req-limits-validator.webhook-demo.svc
+  dnsNames:
+    - req-limits-validator.webhook-demo.svc
+    - req-limits-validator.webhook-demo.svc.cluster.local
+  issuerRef:
+    name: req-limits-validator-issuer
+    kind: Issuer
+  usages:
+    - digital signature
+    - key encipherment
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: req-limits-validator
+  namespace: webhook-demo
+spec:
+  selector:
+    app: req-limits-validator
+  ports:
+    - port: 443
+      targetPort: 8443
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: req-limits-validator
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: req-limits-validator
+  template:
+    metadata:
+      labels:
+        app: req-limits-validator
+    spec:
+      containers:
+        - name: webhook
+          image: creativsrwr/req-limits-validator:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          projected:
+            sources:
+              - secret:
+                  name: req-limits-validator-tls
+
+---
+
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: req-limits-validator
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-demo/req-limits-validator-tls
+webhooks:
+  - name: req-limits-validator.webhook-demo.svc
+    clientConfig:
+      service:
+        name: req-limits-validator
+        namespace: webhook-demo
+        path: "/validate"
+      # caBundle will be injected automatically by cert-manager’s CA injector
+    rules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        resources: ["deployments"]
+        operations: ["CREATE", "UPDATE"]
+        scope: "Namespaced"
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 5
+

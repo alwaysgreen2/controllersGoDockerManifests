@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deploy-no-escalation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: test-deploy-no-escalation
+  template:
+    metadata:
+      labels:
+        app: test-deploy-no-escalation
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          securityContext: 
+            allowPrivilegeEscalation: True
+        
+    
+

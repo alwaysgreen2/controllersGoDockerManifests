@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: with-liveness
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: with-liveness
+  template:
+    metadata:
+      labels:
+        app: with-liveness
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:stable
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+

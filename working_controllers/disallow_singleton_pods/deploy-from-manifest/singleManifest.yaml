@@ -1,0 +1,112 @@
+# ------------------------
+#  Namespace
+# ------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+# ------------------------
+#  Service for the webhook
+# ------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: singleton-pod-blocker
+  namespace: webhook-demo
+spec:
+  selector:
+    app: singleton-pod-blocker
+  ports:
+    - port: 443          # what the API server calls
+      targetPort: 8443   # what the container listens on
+---
+# ------------------------
+#  Webhook Deployment
+# ------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: singleton-pod-blocker
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: singleton-pod-blocker
+  template:
+    metadata:
+      labels:
+        app: singleton-pod-blocker
+    spec:
+      containers:
+        - name: webhook
+          image: creativsrwr/singleton-pod-blocker:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: tls
+          secret:
+            secretName: singleton-pod-blocker-tls
+---
+# ------------------------
+#  cert-manager objects
+# ------------------------
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: singleton-pod-blocker-selfsigned
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: singleton-pod-blocker-tls
+  namespace: webhook-demo
+spec:
+  secretName: singleton-pod-blocker-tls
+  issuerRef:
+    name: singleton-pod-blocker-selfsigned
+    kind: Issuer
+  commonName: singleton-pod-blocker.webhook-demo.svc
+  dnsNames:
+    - singleton-pod-blocker.webhook-demo.svc
+    - singleton-pod-blocker.webhook-demo.svc.cluster.local
+  usages:
+    - digital signature
+    - key encipherment
+---
+# -------------------------------------------------
+#  ValidatingWebhookConfiguration (CA auto‑injected)
+# -------------------------------------------------
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: singleton-pod-blocker
+  annotations:
+    # cert-manager will read the CA from this certificate
+    cert-manager.io/inject-ca-from: webhook-demo/singleton-pod-blocker-tls
+webhooks:
+  - name: singleton-pod-blocker.webhook-demo.svc
+    clientConfig:
+      service:
+        name: singleton-pod-blocker
+        namespace: webhook-demo
+        path: /validate
+      # leave caBundle empty – cert-manager will fill it in
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        resources: ["pods"]
+        operations: ["CREATE"]
+        scope: "Namespaced"
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 2

@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-deployment-envfrom
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bad-deployment-envfrom
+  template:
+    metadata:
+      labels:
+        app: bad-deployment-envfrom
+    spec:
+      containers:
+      - name: app
+        image: nginx
+        envFrom:
+        - configMapRef:
+            name: some-config
+

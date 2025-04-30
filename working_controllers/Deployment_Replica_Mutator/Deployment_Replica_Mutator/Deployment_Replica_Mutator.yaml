@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-demo
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: webhook-demo
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: replica-enforcer-tls
+  namespace: webhook-demo
+spec:
+  commonName: replica-enforcer.webhook-demo.svc
+  dnsNames:
+    - replica-enforcer.webhook-demo.svc
+    - replica-enforcer.webhook-demo.svc.cluster.local
+  secretName: replica-enforcer-tls
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+  usages:
+    - digital signature
+    - key encipherment
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: replica-enforcer
+  namespace: webhook-demo
+spec:
+  selector:
+    app: replica-enforcer
+  ports:
+    - port: 443
+      targetPort: 8443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: replica-enforcer
+  namespace: webhook-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: replica-enforcer
+  template:
+    metadata:
+      labels:
+        app: replica-enforcer
+    spec:
+      containers:
+        - name: webhook
+          image: creativsrwr/replica-enforcer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8443
+          env:
+            - name: EXCLUDED_NAMESPACE
+              value: "webhook-demo"
+          volumeMounts:
+            - name: webhook-certs
+              mountPath: /tls
+              readOnly: true
+      volumes:
+        - name: webhook-certs
+          projected:
+            sources:
+              - secret:
+                  name: replica-enforcer-tls
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: replica-enforcer
+  annotations:
+    cert-manager.io/inject-ca-from: webhook-demo/replica-enforcer-tls
+webhooks:
+  - name: replica-enforcer.webhook-demo.svc
+    clientConfig:
+      service:
+        name: replica-enforcer
+        namespace: webhook-demo
+        path: "/mutate"
+    rules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        resources: ["deployments"]
+        operations: ["CREATE", "UPDATE"]
+        scope: "Namespaced"
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - webhook-demo
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    timeoutSeconds: 2
